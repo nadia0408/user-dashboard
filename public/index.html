@@ -7,13 +7,20 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
   <style>
-    td {
-      word-break: break-word;
-      max-width: 250px;
+    /* Custom scrollbar for webkit browsers if desired for Kanban columns */
+    .kanban-column-content::-webkit-scrollbar {
+      width: 6px;
     }
-    th, td {
-      text-align: left;
-      vertical-align: top;
+    .kanban-column-content::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+    .kanban-column-content::-webkit-scrollbar-thumb {
+      background: #c5c5c5;
+      border-radius: 10px;
+    }
+    .kanban-column-content::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
     }
   </style>
 </head>
@@ -22,7 +29,7 @@
 <div class="flex h-screen overflow-hidden">
   <!-- Sidebar -->
   <aside class="w-64 bg-gray-200 p-4 space-y-4 flex-shrink-0 fixed h-full" id="sidebar-nav">
-    <div class="flex items-center gap-2 text-xl font-bold mb-6">
+    <div class="flex items-center gap-2 text-xl font-bold mb-6 text-gray-700">
       <div class="logo-icon">🔒</div>
       <span>LOCKATED</span>
     </div>
@@ -34,16 +41,16 @@
         <i class="fas fa-flag"></i> Comments
       </a>
       <a href="#" data-resource="albums" class="flex items-center gap-3 p-2 rounded-md hover:bg-gray-300 text-gray-700">
-        <i class="fas fa-chart-bar"></i> Albums
+        <i class="fas fa-images"></i> Albums <!-- Updated Icon -->
       </a>
       <a href="#" data-resource="photos" class="flex items-center gap-3 p-2 rounded-md hover:bg-gray-300 text-gray-700">
-        <i class="fas fa-check-circle"></i> Photos
+        <i class="fas fa-camera-retro"></i> Photos <!-- Updated Icon -->
       </a>
       <a href="#" data-resource="todos" class="flex items-center gap-3 p-2 rounded-md hover:bg-gray-300 text-gray-700">
-        <i class="fas fa-comments"></i> Todos
+        <i class="fas fa-check-square"></i> Todos <!-- Updated Icon -->
       </a>
       <a href="#" data-resource="users" class="flex items-center gap-3 p-2 rounded-md hover:bg-gray-300 text-gray-700">
-        <i class="fas fa-bullseye"></i> Users
+        <i class="fas fa-users"></i> Users <!-- Updated Icon -->
       </a>
     </nav>
   </aside>
@@ -52,11 +59,12 @@
   <main class="ml-64 flex-1 p-6 overflow-auto">
     <!-- Tabs -->
     <div class="flex gap-6 border-b-2 mb-4">
-      <button class="border-b-4 border-red-500 text-red-600 font-semibold pb-2">Active Projects</button>
-      <button class="pb-2 hover:text-red-600">Templates</button>
+      <button id="tab-active-projects" class="border-b-4 border-red-500 text-red-600 font-semibold pb-2" onclick="toggleView('table')">Active Projects</button>
+      <button id="tab-templates" class="pb-2 hover:text-red-600 text-gray-500" onclick="toggleView('templates')">Templates</button> <!-- Added text-gray-500 -->
+      <button id="tab-kanban-view" class="pb-2 hover:text-red-600 text-gray-500" onclick="toggleView('kanban')">Kanban View</button> <!-- Added text-gray-500 -->
     </div>
 
-    <!-- Add Task -->
+    <!-- Add Task Section (for Table View) -->
     <div id="add-task-section" class="space-y-2 mb-6">
       <div id="input-fields" class="grid sm:grid-cols-2 md:grid-cols-3 gap-2"></div>
       <button onclick="addNewTask()" class="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600">
@@ -64,10 +72,29 @@
       </button>
     </div>
 
-    <!-- Scrollable Table Container -->
-    <div id="table-container" class="bg-white rounded-lg shadow p-4 max-h-[500px] overflow-auto">
+    <!-- Table Container -->
+    <div id="table-container" class="bg-white rounded-lg shadow p-4 max-h-[calc(100vh-250px)] overflow-auto">
       <p class="text-gray-500">Loading posts...</p>
     </div>
+
+    <!-- Kanban Container -->
+    <div id="kanban-container" class="hidden">
+      <div class="mb-4"> <!-- Simplified Toolbar -->
+        <button onclick="addKanbanTaskPrompt()" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 text-sm font-semibold">
+            <i class="fas fa-plus mr-1"></i> Add Task to Open
+        </button>
+      </div>
+      <div id="kanban-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Kanban columns will be dynamically inserted here -->
+      </div>
+    </div>
+
+    <!-- Templates Container (Placeholder) -->
+    <div id="templates-container" class="hidden bg-white rounded-lg shadow p-4">
+        <h2 class="text-xl font-semibold mb-2">Templates</h2>
+        <p class="text-gray-600">Templates functionality will be implemented here.</p>
+    </div>
+
   </main>
 </div>
 
@@ -75,9 +102,18 @@
   const sidebarNav = document.getElementById('sidebar-nav');
   const tableContainer = document.getElementById('table-container');
   const inputFieldsDiv = document.getElementById('input-fields');
-  let currentResource = "posts";
-  const savedData = {};
+  const addTaskSection = document.getElementById('add-task-section');
+  
+  const kanbanContainer = document.getElementById('kanban-container');
+  const kanbanGrid = document.getElementById('kanban-grid');
+  const templatesContainer = document.getElementById('templates-container');
 
+  const tabActiveProjects = document.getElementById('tab-active-projects');
+  const tabTemplates = document.getElementById('tab-templates');
+  const tabKanbanView = document.getElementById('tab-kanban-view');
+
+  let currentResource = "posts";
+  const savedData = {}; // For table view data
   const fieldTemplates = {
     posts: ['userId', 'id', 'title', 'body'],
     comments: ['postId', 'id', 'name', 'email', 'body'],
@@ -87,96 +123,365 @@
     users: ['id', 'name', 'username', 'email']
   };
 
-  function formatValue(value) {
-    return typeof value === 'object' && value !== null
-      ? (value.name || value.title || value.email || JSON.stringify(value))
-      : String(value);
+  // --- KANBAN SPECIFIC DATA AND FUNCTIONS ---
+  const KANBAN_STORAGE_KEY = 'kanban-data-vanilla-v2'; // New key for new structure
+
+  const initialSprintInfo = {
+    status: 'Active',
+    sprintName: 'S1 Sprint 1',
+    assignee: 'Sohail Ansari',
+    priority: 'High',
+    startDate: '15/01/2025',
+    endDate: '15/01/2025',
+    timeLeft: '07d : 168h : 00m : 00s',
+  };
+  
+  const initialKanbanData = {
+    activeSprint: {
+      id: 'activeSprint',
+      name: 'Active Sprint', // Name for internal use, not displayed in header tag
+      sprintInfo: initialSprintInfo,
+      tasks: []
+    },
+    open: {
+      id: 'open',
+      name: 'Open',
+      tasks: [
+        { id: 'task-kb-1', taskId: 'P2-T1', title: 'Task 3 from Open', milestone: 'Milestone 3', assignee: 'Bob Wilson', assigneeAvatar: 'AT', estimatedTime: '1h : 00', dueDate: '30 Nov', attachments: 1, links: 1, priorityAlert: false, subTasks: '1/1', comments: 1 }
+      ]
+    },
+    inProgress: {
+      id: 'inProgress',
+      name: 'In Progress',
+      tasks: [
+        { id: 'task-kb-2', taskId: 'P9-T1', title: 'Task 5 in Progress', milestone: 'Milestone 3', assignee: 'Bob Wilson', assigneeAvatar: 'BW', estimatedTime: '1h : 00', dueDate: '30 Nov', attachments: 1, links: 0, priorityAlert: true, subTasks: '0/1', comments: 0 }
+      ]
+    },
+    overdue: {
+      id: 'overdue',
+      name: 'Overdue',
+      tasks: [
+        { id: 'task-kb-3', taskId: 'P1-T1', title: 'Task 1 - Overdue', milestone: 'Milestone 1', assignee: 'Abdul Ghaffar', assigneeAvatar: 'AG', estimatedTime: '30m : 00', dueDate: '30 Nov', attachments: 1, links: 1, priorityAlert: false, subTasks: '1/2', comments: 1 }
+      ]
+    }
+  };
+
+  let kanbanData = JSON.parse(localStorage.getItem(KANBAN_STORAGE_KEY)) || JSON.parse(JSON.stringify(initialKanbanData)); // Deep copy initial
+
+  function saveKanbanData() {
+    localStorage.setItem(KANBAN_STORAGE_KEY, JSON.stringify(kanbanData));
   }
 
-  function buildTable(resource, data) {
+  function createSprintInfoCardHTML(sprint) {
+    return `
+      <div class="bg-white p-4 rounded-md shadow-sm border border-gray-200 mb-4">
+        <div class="flex justify-between items-center mb-2">
+          <span class="px-3 py-1 text-xs font-semibold rounded-full bg-green-100 text-green-700">
+            ${sprint.status}
+          </span>
+          <div class="flex items-center space-x-2 text-gray-600">
+            <i class="fas fa-play cursor-pointer hover:text-black"></i>
+            <i class="far fa-circle cursor-pointer hover:text-black"></i>
+          </div>
+        </div>
+        <h3 class="text-sm font-bold text-gray-800 mb-1">${sprint.sprintName}</h3>
+        <div class="flex justify-between items-end mb-2">
+          <div>
+            <p class="text-sm text-gray-700">${sprint.assignee}</p>
+            <p class="text-xs text-gray-500">
+              ${sprint.startDate} <span class="mx-1">to</span> ${sprint.endDate}
+            </p>
+          </div>
+          <span class="text-sm font-medium text-gray-800">${sprint.priority}</span>
+        </div>
+        ${sprint.timeLeft ? `
+          <div class="flex items-center text-xs text-green-600">
+            <i class="far fa-clock mr-1"></i>
+            <span>${sprint.timeLeft}</span>
+          </div>` : ''}
+      </div>
+    `;
+  }
+
+  function createTaskCardHTML(task, columnId) {
+    return `
+      <div draggable="true" ondragstart="onKanbanDragStart(event, '${task.id}', '${columnId}')"
+           class="bg-white p-3 rounded-md shadow-sm border border-gray-200 mb-3 cursor-grab active:cursor-grabbing"
+           data-task-id="${task.id}" data-column-id="${columnId}">
+        <div class="flex justify-between items-start mb-1">
+          <span class="text-xs font-semibold text-blue-600">${task.taskId || 'N/A'}</span>
+        </div>
+        <p class="text-sm font-medium text-gray-800 mb-2">${task.title}</p>
+        
+        ${task.milestone ? `<div class="flex items-center text-xs text-gray-600 mb-1"><i class="fas fa-flag mr-2 text-red-500"></i><span>${task.milestone}</span></div>` : ''}
+        ${task.assignee ? `<div class="flex items-center text-xs text-gray-600 mb-1"><i class="fas fa-user mr-2 text-gray-500"></i><span>${task.assignee}</span></div>` : ''}
+        ${task.estimatedTime ? `<div class="flex items-center text-xs text-gray-600 mb-2"><i class="fas fa-clock mr-2 text-green-500"></i><span>${task.estimatedTime}</span></div>` : ''}
+
+        <div class="flex items-center justify-between text-xs text-gray-500 border-t pt-2 mt-2">
+          <div class="flex items-center space-x-2">
+            ${typeof task.attachments === 'number' ? `<span><i class="fas fa-paperclip"></i> ${task.attachments}</span>` : ''}
+            ${typeof task.links === 'number' ? `<span><i class="fas fa-link"></i> ${task.links}</span>` : ''}
+            ${task.priorityAlert ? `<span class="text-red-500"><i class="fas fa-exclamation-triangle"></i></span>` : ''}
+            ${task.subTasks ? `<span><i class="fas fa-tasks"></i> ${task.subTasks}</span>` : ''}
+            ${typeof task.comments === 'number' ? `<span><i class="fas fa-comment-dots"></i> ${task.comments}</span>` : ''}
+          </div>
+          <div class="flex items-center space-x-1">
+            ${task.dueDate ? `<span class="text-red-500"><i class="fas fa-history mr-1"></i>${task.dueDate}</span>` : ''}
+            ${task.assigneeAvatar ? `<div class="w-5 h-5 bg-green-500 text-white text-xs flex items-center justify-center rounded-full font-bold">${task.assigneeAvatar}</div>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  
+  const columnHeaderColors = {
+    open: 'bg-red-100 text-red-700 border border-red-300',
+    inProgress: 'bg-yellow-100 text-yellow-700 border border-yellow-300',
+    overdue: 'bg-red-500 text-white',
+  };
+
+  function renderKanban() {
+    kanbanGrid.innerHTML = ''; // Clear previous columns
+
+    Object.values(kanbanData).forEach(column => {
+      const columnEl = document.createElement('div');
+      columnEl.className = "bg-gray-100 p-3 rounded-lg min-h-[calc(100vh-300px)] flex flex-col";
+      columnEl.ondragover = (e) => e.preventDefault();
+      columnEl.ondrop = (e) => onKanbanDrop(e, column.id);
+
+      let columnContentHTML = '';
+      if (column.id === 'activeSprint') {
+        columnContentHTML += createSprintInfoCardHTML(column.sprintInfo);
+        // Drop zone for active sprint tasks
+        const tasksHTML = column.tasks.map(task => createTaskCardHTML(task, column.id)).join('');
+        columnContentHTML += `
+          <div class="flex-grow kanban-column-content overflow-y-auto p-1 border-2 border-dashed border-gray-300 rounded-md ${column.tasks.length === 0 ? 'flex items-center justify-center' : ''}">
+            ${column.tasks.length === 0 ? '<span class="text-gray-500 text-sm text-center">Drag from respective statuses and drop your tasks here.</span>' : tasksHTML}
+          </div>
+        `;
+      } else {
+        // Standard column (Open, In Progress, Overdue)
+        columnContentHTML += `
+          <div class="flex justify-between items-center mb-3">
+            <div class="flex items-center">
+              <button class="text-gray-500 hover:text-black mr-2"><i class="fas fa-arrow-left"></i></button>
+              <h3 class="text-sm font-semibold px-2 py-1 rounded ${columnHeaderColors[column.id] || 'bg-gray-200 text-gray-800'}">
+                ${column.tasks.length} ${column.name}
+              </h3>
+            </div>
+          </div>
+          <div class="flex-grow kanban-column-content overflow-y-auto space-y-0 pr-1">
+            ${column.tasks.map(task => createTaskCardHTML(task, column.id)).join('')}
+            ${column.tasks.length === 0 ? '<div class="text-center text-gray-400 text-sm p-4">No tasks in this column.</div>' : ''}
+          </div>
+        `;
+      }
+      columnEl.innerHTML = columnContentHTML;
+      kanbanGrid.appendChild(columnEl);
+    });
+    saveKanbanData();
+  }
+
+  window.onKanbanDragStart = function(e, taskId, originColumnId) { // Make it global for inline ondragstart
+    e.dataTransfer.setData('taskId', taskId);
+    e.dataTransfer.setData('originColumnId', originColumnId);
+  }
+
+  function onKanbanDrop(e, targetColumnId) {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('taskId');
+    const originColumnId = e.dataTransfer.getData('originColumnId');
+
+    if (!taskId || originColumnId === targetColumnId) return;
+
+    let taskToMove;
+    // Find and remove task from origin column
+    kanbanData[originColumnId].tasks = kanbanData[originColumnId].tasks.filter(task => {
+      if (task.id === taskId) {
+        taskToMove = task;
+        return false;
+      }
+      return true;
+    });
+
+    // Add task to target column
+    if (taskToMove) {
+      kanbanData[targetColumnId].tasks.push(taskToMove);
+    }
+    renderKanban(); // This also calls saveKanbanData
+  }
+
+  function addKanbanTaskPrompt() {
+    const title = prompt("Enter task title for 'Open' column:");
+    if (!title || title.trim() === '') return;
+
+    const newTask = {
+      id: `task-kb-${Date.now()}`,
+      taskId: `P${Math.floor(Math.random() * 10)}-T${Math.floor(Math.random() * 100)}`,
+      title: title.trim(),
+      milestone: 'New Milestone',
+      assignee: 'Unassigned',
+      assigneeAvatar: 'N/A',
+      estimatedTime: '0h : 00',
+      dueDate: 'Not set',
+      attachments: 0,
+      links: 0,
+      priorityAlert: false,
+      subTasks: '0/0',
+      comments: 0,
+    };
+
+    kanbanData.open.tasks.push(newTask);
+    renderKanban(); // This also calls saveKanbanData
+  }
+
+  // --- END KANBAN SPECIFIC ---
+
+
+  // --- GENERAL VIEW TOGGLING ---
+  function setActiveTab(activeTabButton) {
+    [tabActiveProjects, tabTemplates, tabKanbanView].forEach(tab => {
+        tab.classList.remove('border-red-500', 'text-red-600', 'font-semibold');
+        tab.classList.add('text-gray-500'); // Reset to default non-active style
+    });
+    activeTabButton.classList.add('border-red-500', 'text-red-600', 'font-semibold');
+    activeTabButton.classList.remove('text-gray-500');
+  }
+
+  function toggleView(view) {
+    tableContainer.style.display = 'none';
+    addTaskSection.style.display = 'none';
+    kanbanContainer.style.display = 'none';
+    templatesContainer.style.display = 'none';
+
+    if (view === 'table') {
+      tableContainer.style.display = 'block';
+      addTaskSection.style.display = 'block'; // Or 'grid' if that was its original display
+      setActiveTab(tabActiveProjects);
+      // loadData for currentResource is usually called by sidebar click
+    } else if (view === 'kanban') {
+      kanbanContainer.style.display = 'block';
+      setActiveTab(tabKanbanView);
+      renderKanban();
+    } else if (view === 'templates') {
+      templatesContainer.style.display = 'block';
+      setActiveTab(tabTemplates);
+    }
+  }
+  // --- END GENERAL VIEW TOGGLING ---
+
+
+  // --- TABLE VIEW SPECIFIC FUNCTIONS (largely unchanged) ---
+  function formatValue(value) { // For table view
+    if (typeof value === 'object' && value !== null) {
+      // Attempt to find a representative string, or stringify
+      return value.name || value.title || value.email || JSON.stringify(value).substring(0, 50) + (JSON.stringify(value).length > 50 ? '...' : '');
+    }
+    return String(value);
+  }
+
+  function buildTable(resource, data) { // For table view
     if (!data || !data.length) return '<p class="p-4 text-gray-500">No data to display.</p>';
-    const headers = Object.keys(data[0]);
-    const thead = `
-      <thead class="bg-gray-100 text-gray-700">
-        <tr>${headers.map(h => `<th class="p-3">${h}</th>`).join('')}<th class="p-3">Actions</th></tr>
-      </thead>`;
-    const tbody = data.map((item, rowIndex) => `
-      <tr class="border-t" data-row="${rowIndex}">
-        ${headers.map(key => `
-          <td contenteditable="true" class="p-3 border border-transparent hover:border-gray-300 cursor-text whitespace-pre-wrap break-words max-w-[250px]"
-              data-key="${key}" data-row="${rowIndex}">${formatValue(item[key])}</td>`).join('')}
-        <td class="p-3">
-          <button onclick="deleteRow('${resource}', ${rowIndex})"
-                  class="text-red-600 hover:text-red-800"><i class="fas fa-trash"></i></button>
-        </td>
-      </tr>`).join('');
-    return `<div class="overflow-x-auto"><table class="min-w-full text-sm text-left" id="data-table">${thead}<tbody>${tbody}</tbody></table></div>`;
+    
+    // Use a consistent set of headers based on fieldTemplates if possible, or derive from first item
+    const headers = fieldTemplates[resource] || Object.keys(data[0]);
+    
+    const thead = `<thead class="bg-gray-100 text-gray-600 uppercase text-xs sticky top-0 z-10"><tr>${headers.map(h => `<th class="px-4 py-3 font-semibold">${h.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}</th>`).join('')}<th class="px-4 py-3 font-semibold">Actions</th></tr></thead>`;
+    
+    const tbody = data.map((item, rowIndex) => 
+      `<tr class="border-b border-gray-200 hover:bg-gray-50" data-row="${rowIndex}">${
+        headers.map(key => 
+          `<td contenteditable="true" class="px-4 py-3 border border-transparent hover:border-gray-300 cursor-text whitespace-nowrap max-w-xs truncate" data-key="${key}" data-row="${rowIndex}" title="${formatValue(item[key] || '')}">${formatValue(item[key] || '')}</td>`
+        ).join('')
+      }<td class="px-4 py-3 whitespace-nowrap"><button onclick="deleteRow('${resource}', ${rowIndex})" class="text-red-500 hover:text-red-700 font-medium" title="Delete item"><i class="fas fa-trash"></i></button></td></tr>`
+    ).join('');
+    
+    return `<div class="overflow-x-auto"><table class="min-w-full text-sm text-left text-gray-700" id="data-table">${thead}<tbody>${tbody}</tbody></table> <div class="p-2 text-xs text-gray-500 bg-gray-50 border-t">Showing ${data.length} items</div></div>`;
   }
 
-  async function loadData(resource) {
+  async function loadData(resource) { // For table view
     tableContainer.innerHTML = `<p class="p-4 text-gray-500">Loading ${resource}...</p>`;
     try {
-      if (savedData[resource]) {
+      if (savedData[resource] && savedData[resource].length > 0) { // Check if data actually exists
         tableContainer.innerHTML = buildTable(resource, savedData[resource]);
         attachCellListeners(resource);
         renderInputFields(resource);
         return;
       }
       const res = await fetch(`https://jsonplaceholder.typicode.com/${resource}`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
       const data = await res.json();
-      const limitedData = Array.isArray(data) ? data.slice(0, 20) : [data];
-      savedData[resource] = limitedData;
-      tableContainer.innerHTML = buildTable(resource, limitedData);
+      const limitedData = Array.isArray(data) ? data.slice(0, 20) : [data]; // Limit to 20 items for performance
+      
+      // Ensure all objects have all keys from fieldTemplates for consistency
+      const templateKeys = fieldTemplates[resource] || (limitedData.length > 0 ? Object.keys(limitedData[0]) : []);
+      savedData[resource] = limitedData.map(item => {
+        const newItem = {};
+        templateKeys.forEach(key => newItem[key] = item[key]);
+        return newItem;
+      });
+
+      tableContainer.innerHTML = buildTable(resource, savedData[resource]);
       attachCellListeners(resource);
       renderInputFields(resource);
     } catch (error) {
-      tableContainer.innerHTML = `<p class="p-4 text-red-500">Error loading data: ${error.message}</p>`;
+      console.error("Error loading data:", error);
+      tableContainer.innerHTML = `<p class="p-4 text-red-500">Error loading ${resource} data: ${error.message}. Please try again or select another resource.</p>`;
     }
   }
 
-  function renderInputFields(resource) {
+  function renderInputFields(resource) { // For table view
     inputFieldsDiv.innerHTML = "";
     const fields = fieldTemplates[resource] || [];
     fields.forEach(field => {
+      if (field === 'id' && (resource === 'posts' || resource === 'comments' || resource === 'albums' || resource === 'photos' || resource === 'todos')) return; // Auto-generated for these
       const isBool = field === 'completed';
-      inputFieldsDiv.innerHTML += `
-        <input type="${isBool ? 'checkbox' : 'text'}" name="${field}" id="field-${field}"
-          class="p-2 border rounded" placeholder="${field}" ${isBool ? '' : 'value=""'} />
-      `;
+      const inputType = isBool ? 'checkbox' : (field === 'body' ? 'textarea' : 'text');
+      const inputElement = inputType === 'textarea'
+        ? `<textarea name="${field}" id="field-${field}" class="p-2 border rounded w-full" placeholder="${field}" rows="3"></textarea>`
+        : `<input type="${inputType}" name="${field}" id="field-${field}" class="p-2 border rounded w-full" placeholder="${field}" ${isBool ? '' : 'value=""'} />`;
+      inputFieldsDiv.innerHTML += `<div class="flex flex-col space-y-1">${inputElement}</div>`;
     });
   }
 
-  function getFieldValues(resource) {
-    const fields = fieldTemplates[resource];
+  function getFieldValues(resource) { // For table view
+    const fields = fieldTemplates[resource] || [];
     const newItem = {};
     fields.forEach(field => {
+      if (field === 'id' && (resource === 'posts' || resource === 'comments' || resource === 'albums' || resource === 'photos' || resource === 'todos')) {
+        newItem[field] = Date.now(); // Auto-generate ID for new items for these resources
+        return;
+      }
       const input = document.getElementById(`field-${field}`);
       if (!input) return;
-      if (input.type === "checkbox") {
-        newItem[field] = input.checked;
-      } else if (field === "id") {
-        newItem[field] = Date.now();
-      } else if (["userId", "postId", "albumId"].includes(field)) {
-        newItem[field] = parseInt(input.value) || 1;
-      } else {
-        newItem[field] = input.value.trim();
-      }
+
+      if (input.type === "checkbox") newItem[field] = input.checked;
+      else if (["userId", "postId", "albumId"].includes(field)) newItem[field] = parseInt(input.value) || 1; // Default to 1 if not a number
+      else newItem[field] = input.value.trim();
     });
     return newItem;
   }
 
-  function attachCellListeners(resource) {
-    const cells = document.querySelectorAll('td[contenteditable="true"]');
+  function attachCellListeners(resource) { // For table view
+    const cells = document.querySelectorAll('#data-table td[contenteditable="true"]');
     cells.forEach(cell => {
-      cell.addEventListener('focus', () => {
-        cell.classList.add('outline-none', 'ring-2', 'ring-red-400', 'bg-red-50');
-      });
+      cell.addEventListener('focus', () => cell.classList.add('outline-none', 'ring-2', 'ring-red-400', 'bg-red-50'));
       cell.addEventListener('blur', () => {
-        const rowIndex = cell.dataset.row;
+        const rowIndex = parseInt(cell.dataset.row);
         const key = cell.dataset.key;
         const newValue = cell.innerText.trim();
-        savedData[resource][rowIndex][key] = newValue;
+        if (savedData[resource] && savedData[resource][rowIndex]) {
+            // Basic type conversion attempt for numbers and booleans
+            if (!isNaN(savedData[resource][rowIndex][key]) && !isNaN(parseFloat(newValue))) {
+                 savedData[resource][rowIndex][key] = parseFloat(newValue);
+            } else if (typeof savedData[resource][rowIndex][key] === 'boolean') {
+                 savedData[resource][rowIndex][key] = newValue.toLowerCase() === 'true' || newValue === '1';
+            } else {
+                 savedData[resource][rowIndex][key] = newValue;
+            }
+        }
         cell.classList.remove('ring-2', 'ring-red-400', 'bg-red-50');
+        // No need to rebuild table here, direct data mutation
       });
       cell.addEventListener('keydown', e => {
         if (e.key === 'Enter') {
@@ -187,33 +492,42 @@
     });
   }
 
-  function deleteRow(resource, rowIndex) {
-    if (!confirm("Are you sure you want to delete this task?")) return;
-    savedData[resource].splice(rowIndex, 1);
-    tableContainer.innerHTML = buildTable(resource, savedData[resource]);
-    attachCellListeners(resource);
+  window.deleteRow = function(resource, rowIndex) { // For table view, make global for inline onclick
+    if (!confirm("Are you sure you want to delete this item?")) return;
+    if (savedData[resource]) {
+      savedData[resource].splice(rowIndex, 1);
+      tableContainer.innerHTML = buildTable(resource, savedData[resource]);
+      attachCellListeners(resource);
+    }
   }
 
-  function addNewTask() {
+  function addNewTask() { // For table view
     const newItem = getFieldValues(currentResource);
-    const requiredFields = fieldTemplates[currentResource].filter(f => f !== 'id');
+    const requiredFields = (fieldTemplates[currentResource] || []).filter(f => 
+        !(f === 'id' && (currentResource === 'posts' || currentResource === 'comments' || currentResource === 'albums' || currentResource === 'photos' || currentResource === 'todos')) && // ID is auto-generated for these
+        f !== 'completed' // 'completed' can be false by default
+    );
+
     const isEmpty = requiredFields.some(f => {
       const value = newItem[f];
-      return value === undefined || value === null || value === '';
+      return value === undefined || value === null || String(value).trim() === '';
     });
+
     if (isEmpty) {
-      return alert("Please fill in all fields before adding.");
+      return alert("Please fill in all required fields before adding.");
     }
     savedData[currentResource] = savedData[currentResource] || [];
     savedData[currentResource].unshift(newItem);
     tableContainer.innerHTML = buildTable(currentResource, savedData[currentResource]);
     attachCellListeners(currentResource);
-    document.querySelectorAll('#input-fields input').forEach(input => {
+    document.querySelectorAll('#input-fields input, #input-fields textarea').forEach(input => {
       if (input.type === 'checkbox') input.checked = false;
       else input.value = '';
     });
   }
+  // --- END TABLE VIEW SPECIFIC ---
 
+  // Sidebar navigation
   sidebarNav.querySelectorAll('a[data-resource]').forEach(link => {
     link.addEventListener('click', e => {
       e.preventDefault();
@@ -224,12 +538,17 @@
       });
       link.classList.add('bg-red-500', 'text-white');
       link.classList.remove('hover:bg-gray-300', 'text-gray-700');
+      
+      toggleView('table'); // Default to table view when resource changes
       loadData(currentResource);
     });
   });
 
-  // Initial load
-  window.onload = () => loadData(currentResource);
+  // Initial Load
+  window.onload = () => {
+    toggleView('table'); // Start with Active Projects (table view)
+    loadData(currentResource); // Load data for the default "posts" resource
+  };
 </script>
 </body>
 </html>
