@@ -1,117 +1,99 @@
 // src/components/KanbanBoard.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import KanbanToolbar from './KanbanToolbar';
 import KanbanColumn from './KanbanColumn';
-import NewSprintModal from './NewSprintModal'; 
 
-// initialSprintInfoDefault, initialColumns, parseInputDate, formatDateForDisplay, calculateTimeLeft
-// ... (Keep these helper constants and functions as they were in the previous version) ...
-const initialSprintInfoDefault = {
-  status: 'Active',
-  sprintName: 'S1 Sprint 1',
-  assignee: 'Sohail Ansari',
-  priority: 'High',
-  startDate: '15/01/2025',
-  endDate: '15/01/2025',
-  timeLeft: '07d : 168h : 00m : 00s',
-};
+// Default Kanban columns for any resource
+const getDefaultColumns = () => ({
+  todo: { id: 'todo', name: 'To Do', tasks: [] },
+  inProgress: { id: 'inProgress', name: 'In Progress', tasks: [] },
+  completed: { id: 'completed', name: 'Completed', tasks: [] },
+});
 
-const initialColumns = {
-  activeSprint: {
-    id: 'activeSprint',
-    name: 'Active Sprint',
-    sprintInfo: { ...initialSprintInfoDefault },
-    tasks: [
-        // Example task already in active sprint from your image
-        { id: 'task-kb-sprint-1', taskId: 'P4-T88', title: 'to code', milestone: 'New Milestone', assignee: 'Unassigned', assigneeAvatar: 'N/A', estimatedTime: '0h : 00', dueDate: 'Not set', attachments: 0, links: 0, priorityAlert: false, subTasks: '0/0', comments: 0 }
-    ],
-  },
-  open: {
-    id: 'open',
-    name: 'Open',
-    taskCount: 1, 
-    tasks: [
-      { id: 'task-1', taskId: 'P9-T1', title: 'Task 5 in Progress', milestone: 'Milestone 3', assignee: 'Bob Wilson', assigneeAvatar: 'BW', estimatedTime: '1h : 00', dueDate: '30 Nov', attachments: 1, links: 0, priorityAlert: true, subTasks: '0/1', comments: 0 },
-    ],
-  },
-  inProgress: {
-    id: 'inProgress',
-    name: 'In Progress',
-    taskCount: 2, 
-    tasks: [
-      { id: 'task-2', taskId: 'P3-T42', title: 'open', milestone: 'New Milestone', assignee: 'Unassigned', assigneeAvatar: 'N/A', estimatedTime: '0h : 00', dueDate: 'Not set', attachments: 0, links: 0, priorityAlert: false, subTasks: '0/0', comments: 0 },
-      { id: 'task-kb-react-1', taskId: 'P2-T1', title: 'Task 3 from Open', milestone: 'Milestone 3', assignee: 'Bob Wilson', assigneeAvatar: 'AT', estimatedTime: '1h : 00', dueDate: '30 Nov', attachments: 1, links: 1, priorityAlert: false, subTasks: '1/1', comments: 1 },
-    ],
-  },
-  overdue: {
-    id: 'overdue',
-    name: 'Overdue',
-    taskCount: 1, 
-    tasks: [
-      { id: 'task-3', taskId: 'P1-T1', title: 'Task 1 - Overdue', milestone: 'Milestone 1', assignee: 'Abdul Ghaffar', assigneeAvatar: 'AG', estimatedTime: '30m : 00', dueDate: '30 Nov', attachments: 1, links: 1, priorityAlert: false, subTasks: '1/2', comments: 1 },
-    ],
-  },
-};
+// Helper to transform API item to a Kanban task structure
+const apiItemToKanbanTask = (item, resourceType, fieldTemplates, getPrimaryField) => {
+  const primaryField = getPrimaryField(resourceType);
+  let title = item[primaryField] || `Item ${item.id}`;
+  
+  let detailsArray = [];
+  const fields = fieldTemplates[resourceType] || Object.keys(item);
 
-const parseInputDate = (dateStr) => { 
-  if (!dateStr) return null;
-  return new Date(dateStr);
-};
+  fields.forEach(key => {
+    if (key === primaryField || key === 'id') return; // Already used or part of ID
+    if (item[key] !== undefined && item[key] !== null) {
+      let value = String(item[key]);
+      if (typeof item[key] === 'object') value = JSON.stringify(item[key]);
+      
+      let displayValue = value;
+      // Basic truncation for display
+      if (key === 'body' && value.length > 100) displayValue = value.substring(0, 97) + '...';
+      else if (value.length > 50) displayValue = value.substring(0, 47) + '...';
 
-const formatDateForDisplay = (dateObj) => { 
-  if (!dateObj) return 'N/A';
-  const day = String(dateObj.getDate()).padStart(2, '0');
-  const month = String(dateObj.getMonth() + 1).padStart(2, '0'); 
-  const year = dateObj.getFullYear();
-  return `${day}/${month}/${year}`;
-};
-
-const calculateTimeLeft = (endDateStr_yyyy_mm_dd) => { 
-  const endDate = parseInputDate(endDateStr_yyyy_mm_dd);
-  if (!endDate) return 'N/A';
-  const now = new Date();
-  endDate.setHours(23, 59, 59, 999); 
-  let diff = endDate.getTime() - now.getTime();
-  if (diff < 0) return 'Ended';
-  let days = Math.floor(diff / (1000 * 60 * 60 * 24));
-  diff -= days * (1000 * 60 * 60 * 24);
-  let hours = Math.floor(diff / (1000 * 60 * 60));
-  diff -= hours * (1000 * 60 * 60);
-  let mins = Math.floor(diff / (1000 * 60));
-  return `${String(days).padStart(2,'0')}d : ${String(hours).padStart(2,'0')}h : ${String(mins).padStart(2,'0')}m`;
-};
-
-
-const KanbanBoard = () => {
-  const [columns, setColumns] = useState(() => {
-    const savedColumns = localStorage.getItem('kanban-data-react');
-    if (savedColumns) {
-      const parsed = JSON.parse(savedColumns);
-      Object.keys(parsed).forEach(colId => {
-        if (parsed[colId].tasks && parsed[colId].name !== 'Active Sprint') {
-          parsed[colId].taskCount = parsed[colId].tasks.length;
-        }
-         // Initialize sprintInfo if it's missing for activeSprint (e.g. old localStorage data)
-        if (colId === 'activeSprint' && !parsed[colId].sprintInfo) {
-            parsed[colId].sprintInfo = { ...initialSprintInfoDefault };
-        }
-      });
-      return parsed;
+      if (key === 'thumbnailUrl' || (key === 'url' && resourceType === 'photos')) {
+        detailsArray.push(`<img src="${item.thumbnailUrl || item.url}" alt="thumb" class="max-w-full h-16 object-contain rounded my-1">`);
+      } else if (key === 'completed' && resourceType === 'todos') {
+        detailsArray.push(`<span class="text-xs"><i class="fas ${item.completed ? 'fa-check-square text-green-500' : 'fa-square text-gray-400'}"></i> ${key.charAt(0).toUpperCase() + key.slice(1)}: ${item.completed}</span>`);
+      } else {
+        detailsArray.push(`<p class="text-xs text-gray-600 mb-1"><strong>${key.charAt(0).toUpperCase() + key.slice(1)}:</strong> ${displayValue}</p>`);
+      }
     }
-    const initialized = JSON.parse(JSON.stringify(initialColumns));
-    Object.keys(initialized).forEach(colId => {
-        if (initialized[colId].tasks && initialized[colId].name !== 'Active Sprint') {
-            initialized[colId].taskCount = initialized[colId].tasks.length;
-        }
-    });
-    return initialized;
   });
 
-  const [isSprintModalOpen, setIsSprintModalOpen] = useState(false);
+  return {
+    id: `task-${resourceType}-${item.id}-${Date.now()}`, // Unique ID for DND
+    originalId: item.id,
+    resource: resourceType,
+    title: title,
+    detailsHTML: detailsArray.join(''), // This will be rendered by TaskCard
+    // Add any other common fields if needed, or transform them into detailsHTML
+  };
+};
 
+
+const KanbanBoard = ({ resourceType, initialItems, fieldTemplates, getPrimaryField }) => {
+  const [columns, setColumns] = useState(getDefaultColumns());
+  const [isLoading, setIsLoading] = useState(true);
+
+  const getStorageKey = useCallback(() => `kanban-data-react-${resourceType}`, [resourceType]);
+
+  // Load columns from localStorage or initialize
   useEffect(() => {
-    localStorage.setItem('kanban-data-react', JSON.stringify(columns));
-  }, [columns]);
+    setIsLoading(true);
+    const savedColumns = localStorage.getItem(getStorageKey());
+    if (savedColumns) {
+      try {
+        const parsed = JSON.parse(savedColumns);
+        // Ensure all default columns exist if saved data is partial
+        setColumns(prev => ({ ...getDefaultColumns(), ...parsed }));
+      } catch (e) {
+        console.error("Failed to parse Kanban data from localStorage", e);
+        setColumns(getDefaultColumns());
+      }
+    } else if (initialItems && initialItems.length > 0) {
+      // If no saved data, and initialItems are provided, populate "To Do"
+      const initialTasks = initialItems
+        .slice(0, 5) // Take first 5 or as needed
+        .map(item => apiItemToKanbanTask(item, resourceType, fieldTemplates, getPrimaryField));
+      
+      setColumns(prev => ({
+        ...getDefaultColumns(),
+        todo: { ...prev.todo, tasks: initialTasks },
+      }));
+    } else {
+      // No saved data and no initial items (e.g., direct navigation to Kanban empty)
+      // Optionally, fetch fresh data here if initialItems is empty but resourceType is valid
+      // For now, just default to empty columns.
+       setColumns(getDefaultColumns());
+    }
+    setIsLoading(false);
+  }, [resourceType, initialItems, getStorageKey, fieldTemplates, getPrimaryField]);
+
+  // Save columns to localStorage whenever they change
+  useEffect(() => {
+    if (!isLoading) { // Only save after initial load/setup
+      localStorage.setItem(getStorageKey(), JSON.stringify(columns));
+    }
+  }, [columns, getStorageKey, isLoading]);
 
   const handleDragStart = (e, taskId, originColumnId) => {
     e.dataTransfer.setData('taskId', taskId);
@@ -124,128 +106,73 @@ const KanbanBoard = () => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('taskId');
     const originColumnId = e.dataTransfer.getData('originColumnId');
-    if (!taskId || originColumnId === targetColumnId) return;
+    if (!taskId || originColumnId === targetColumnId || !columns[originColumnId] || !columns[targetColumnId]) return;
 
     let taskToMove;
-    const newColumnsData = { ...columns };
-    newColumnsData[originColumnId] = {
-      ...newColumnsData[originColumnId],
-      tasks: newColumnsData[originColumnId].tasks.filter(task => {
-        if (task.id === taskId) { taskToMove = task; return false; }
-        return true;
-      }),
-    };
-    if (newColumnsData[originColumnId].name !== 'Active Sprint') {
-      newColumnsData[originColumnId].taskCount = newColumnsData[originColumnId].tasks.length;
-    }
-    if (taskToMove) {
-      newColumnsData[targetColumnId] = {
-        ...newColumnsData[targetColumnId],
-        tasks: [...newColumnsData[targetColumnId].tasks, taskToMove],
-      };
-      if (newColumnsData[targetColumnId].name !== 'Active Sprint') {
-        newColumnsData[targetColumnId].taskCount = newColumnsData[targetColumnId].tasks.length;
+    const newOriginTasks = columns[originColumnId].tasks.filter(task => {
+      if (task.id === taskId) {
+        taskToMove = task;
+        return false;
       }
+      return true;
+    });
+
+    if (taskToMove) {
+      const newTargetTasks = [...columns[targetColumnId].tasks, taskToMove];
+      setColumns(prev => ({
+        ...prev,
+        [originColumnId]: { ...prev[originColumnId], tasks: newOriginTasks },
+        [targetColumnId]: { ...prev[targetColumnId], tasks: newTargetTasks },
+      }));
     }
-    setColumns(newColumnsData);
   };
   
-  const addNewTaskToOpenHandler = () => { // Renamed to avoid conflict with prop name
-    const title = prompt("Enter new task title for 'Open' column:");
+  const addNewTaskToTodo = () => {
+    const primaryField = getPrimaryField(resourceType);
+    const title = prompt(`Enter ${primaryField} for new ${resourceType} task (will be added to 'To Do'):`);
     if (!title || title.trim() === "") return;
-    const newTask = {
-      id: `task-${Date.now()}`, taskId: `P${Math.floor(Math.random() * 10)}-T${Math.floor(Math.random() * 100)}`,
-      title: title.trim(), milestone: 'New Milestone', assignee: 'Unassigned', assigneeAvatar: 'N/A',
-      estimatedTime: '0h : 00', dueDate: 'N/A', attachments: 0, links: 0,
-      priorityAlert: false, subTasks: '0/0', comments: 0,
-    };
-    setColumns(prev => {
-      const updatedOpenColumn = { ...prev.open, tasks: [...prev.open.tasks, newTask] };
-      updatedOpenColumn.taskCount = updatedOpenColumn.tasks.length; // Update count
-      return { ...prev, open: updatedOpenColumn };
+
+    // Create a mock API item for transformation
+    const mockApiItem = { id: Date.now() }; // This will be the originalId
+    mockApiItem[primaryField] = title.trim();
+    // Add other default fields based on fieldTemplates if necessary for transformation
+     (fieldTemplates[resourceType] || []).forEach(field => {
+        if (!mockApiItem.hasOwnProperty(field) && field !== 'id' && field !== primaryField) {
+            if (field === 'body') mockApiItem[field] = "Default body added via Kanban.";
+            else if (field === 'email' && resourceType === 'comments') mockApiItem[field] = "new@example.com";
+            else if (field === 'completed' && resourceType === 'todos') mockApiItem[field] = false;
+            // Add more defaults as needed for other resource types
+        }
     });
+
+    const newTask = apiItemToKanbanTask(mockApiItem, resourceType, fieldTemplates, getPrimaryField);
+    
+    setColumns(prev => ({
+      ...prev,
+      todo: { ...prev.todo, tasks: [newTask, ...prev.todo.tasks] }, // Add to top
+    }));
   };
 
-  const handleOpenSprintModal = () => setIsSprintModalOpen(true);
-  const handleCloseSprintModal = () => setIsSprintModalOpen(false);
-
-  const handleSprintSubmit = (sprintData) => {
-    setColumns(prevColumns => {
-      const newSprintInfo = {
-        status: 'Active',
-        sprintName: sprintData.sprintTitle,
-        assignee: sprintData.sprintOwner,
-        priority: sprintData.priority,
-        startDate: formatDateForDisplay(parseInputDate(sprintData.startDate)),
-        endDate: formatDateForDisplay(parseInputDate(sprintData.endDate)),
-        _endDateRaw: sprintData.endDate, 
-        timeLeft: calculateTimeLeft(sprintData.endDate)
-      };
-      return {
-        ...prevColumns,
-        activeSprint: {
-          ...prevColumns.activeSprint,
-          sprintInfo: newSprintInfo,
-        }
-      };
-    });
-    handleCloseSprintModal();
-  };
-  
-  useEffect(() => {
-    // Ensure sprintInfo is always present for activeSprint column
-    if (columns.activeSprint && !columns.activeSprint.sprintInfo) {
-        setColumns(prev => ({
-            ...prev,
-            activeSprint: {
-                ...prev.activeSprint,
-                sprintInfo: { ...initialSprintInfoDefault }
-            }
-        }));
-    }
-    // Recalculate timeLeft if _endDateRaw exists
-    else if (columns.activeSprint?.sprintInfo?._endDateRaw) {
-        const newTimeLeft = calculateTimeLeft(columns.activeSprint.sprintInfo._endDateRaw);
-        if (newTimeLeft !== columns.activeSprint.sprintInfo.timeLeft) {
-            setColumns(prev => ({
-                ...prev,
-                activeSprint: {
-                    ...prev.activeSprint,
-                    sprintInfo: {
-                        ...prev.activeSprint.sprintInfo,
-                        timeLeft: newTimeLeft
-                    }
-                }
-            }));
-        }
-    }
-  }, [columns.activeSprint?.sprintInfo?._endDateRaw, columns.activeSprint]); // Added columns.activeSprint dependency
+  if (isLoading) {
+    return <div className="p-4 text-gray-600">Loading Kanban board for {resourceType}...</div>;
+  }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      <KanbanToolbar 
-        onOpenSprintModal={handleOpenSprintModal}
-        onAddTaskToOpen={addNewTaskToOpenHandler} // Pass the handler
-      />
-      <div className="flex-grow p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 overflow-x-auto">
-        {/* Ensure columns.activeSprint.sprintInfo is available before rendering SprintInfoCard in KanbanColumn */}
+    <div className="flex flex-col h-full"> {/* Use h-full for flex child */}
+      <KanbanToolbar onAddTaskToOpen={addNewTaskToTodo} />
+      <div className="flex-grow p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 overflow-x-auto">
         {Object.values(columns).map((column) => (
           <KanbanColumn
             key={column.id}
-            column={column}
+            column={column} // Pass the whole column object
             tasks={column.tasks}
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             onDragStart={handleDragStart}
-            isFirstColumn={column.id === 'activeSprint'}
+            // No isFirstColumn needed anymore
           />
         ))}
       </div>
-      <NewSprintModal
-        isOpen={isSprintModalOpen}
-        onClose={handleCloseSprintModal}
-        onSubmit={handleSprintSubmit}
-      />
     </div>
   );
 };

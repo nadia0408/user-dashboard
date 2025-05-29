@@ -8,6 +8,7 @@ import Todos from "./pages/Todos";
 import Users from "./pages/Users";
 import KanbanBoard from "./components/KanbanBoard"; // Corrected path
 import Sidebar from "./components/Sidebar"; // Assuming Sidebar is in components
+import ResourcePage from './pages/ResourcePage';
 
 // If your pages/TableView components are simple, you might not need separate files
 // For this example, I'm keeping them.

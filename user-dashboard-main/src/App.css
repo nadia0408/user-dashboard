@@ -112,3 +112,23 @@ table, th, td {
 .modal-body-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #b91c1c; /* Darker red on hover */
 }
+/* In src/index.css or App.css */
+.kanban-column-content::-webkit-scrollbar {
+  width: 6px;
+}
+.kanban-column-content::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+.kanban-column-content::-webkit-scrollbar-thumb {
+  background: #c5c5c5;
+  border-radius: 10px;
+}
+.kanban-column-content::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+/* In src/index.css or App.css - if TaskCard needs its own specific scrollbar */
+.custom-scrollbar::-webkit-scrollbar { width: 5px; /* Or as needed */ }
+.custom-scrollbar::-webkit-scrollbar-track { background: #f0f0f0; border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #cccccc; border-radius: 10px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #aaaaaa; }
